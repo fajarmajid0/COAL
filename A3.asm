@@ -15,7 +15,7 @@ line5 db '8088 helps us understand how computers work.', 0
 line6 db 'It is fun to see my code working on the screen.', 0
 
 statusText db 'Total matches found: ', 0
-statusSuffix db ' , Viewport Status: ACTIVE', 0
+statusSuffix db ' | Viewport Status: ACTIVE', 0
 
 keyword db '8088', 0
 
@@ -24,10 +24,10 @@ matchCount dw 0
 start:
     push cs
     pop ds
+    cld
 
     mov ax, 0B800h
     mov es, ax
-    cld
     xor di, di
     mov ax, 0720h
     mov cx, 2000
@@ -48,7 +48,7 @@ start:
     call draw_frame
 
     push word 1Eh
-    push word 30
+    push word 33
     push word 3
     push word titleText
     call write_line
@@ -88,6 +88,14 @@ start:
     push word 16
     push word line6
     call write_line
+
+    ; scroll interior upward by one row.
+    push word 1
+    push word 72
+    push word 21
+    push word 8
+    push word 3
+    call scroll_window_up
 
     mov ax, 4C00h
     int 21h
@@ -133,6 +141,7 @@ write_done:
     pop bp
     ret 8
 
+; frame : top=3, left=8, bottom=21, right=72.
 draw_frame:
     push ax
     push bx
@@ -144,24 +153,19 @@ draw_frame:
     mov ax, 0B800h
     mov es, ax
 
-    ; top left corner
     mov di, 3*160+8*2
-    mov ax, 1Eh
-    mov al, 0C9h
+    mov ax, 1EC9h
     stosw
 
-    ; top horizontal line
     mov cx, 63
     mov ax, 1ECDh
 top_loop:
     stosw
     loop top_loop
 
-    ; top right corner
     mov ax, 1EBBh
     stosw
 
-    ; vertical sides
     mov bx, 4
 side_loop:
     cmp bx, 21
@@ -172,15 +176,11 @@ side_loop:
     mul dx
     mov di, ax
 
-    mov ax, 8
-    shl ax, 1
-    add di, ax
+    add di, 16
     mov ax, 1EBAh
     stosw
 
-    mov ax, 72
-    shl ax, 1
-    add di, ax
+    add di, 126
     mov ax, 1EBAh
     stosw
 
@@ -208,4 +208,111 @@ bottom_loop:
     pop bx
     pop ax
     ret
+
+; stack parameters: top, left, bottom, right, rows
+; push order at caller: rows, right, bottom, left, top.
+scroll_window_up:
+    push bp
+    mov bp, sp
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    push di
+    push ds
+    push es
+
+    mov ax, 0B800h
+    mov ds, ax
+    mov es, ax
+    cld
+
+    mov ax, [bp+4]
+    add ax, 2
+    mov bx, 160
+    mul bx
+    mov di, ax
+
+    mov ax, [bp+6]
+    add ax, 2
+    shl ax, 1
+    add di, ax
+    mov si, di
+
+    mov ax, [bp+12]
+    mov bx, 160
+    mul bx
+    add si, ax
+
+    mov ax, [bp+8]
+    sub ax, [bp+4]
+    sub ax, 2
+    sub ax, [bp+12]
+    mov dx, ax
+
+    mov ax, [bp+10]
+    sub ax, [bp+6]
+    sub ax, 3
+    mov bx, ax
+
+scroll_rows:
+    cmp dx, 0
+    je clear_rows
+
+    mov cx, bx
+    rep movsw
+
+    add si, 160
+    sub si, bx
+    sub si, bx
+
+    add di, 160
+    sub di, bx
+    sub di, bx
+
+    dec dx
+    jmp scroll_rows
+
+clear_rows:
+    mov ax, [bp+8]
+    sub ax, [bp+12]
+    mov dx, ax
+
+clear_row_loop:
+    cmp dx, [bp+8]
+    jae scroll_done
+
+    mov ax, dx
+    mov bx, 160
+    mul bx
+    mov di, ax
+
+    mov ax, [bp+6]
+    add ax, 2
+    shl ax, 1
+    add di, ax
+
+    mov cx, bx
+    mov cx, [bp+10]
+    sub cx, [bp+6]
+    sub cx, 3
+
+    mov ax, 0720h
+    rep stosw
+
+    inc dx
+    jmp clear_row_loop
+
+scroll_done:
+    pop es
+    pop ds
+    pop di
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    pop bp
+    ret 10
 
