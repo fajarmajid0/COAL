@@ -110,6 +110,27 @@ start:
 
     mov [matchCount], ax
 	
+	push word 07h
+    push word 8
+    push word 23
+    push word statusText
+    call write_line
+
+    push word 07h
+    push word 29
+    push word 23
+    push word [matchCount]
+    call print_number
+
+    add ax, 29
+    mov bx, ax
+
+    push word 07h
+    push bx
+    push word 23
+    push word statusSuffix
+    call write_line
+	
 	mov ax, 4C00h
     int 21h
 
@@ -448,7 +469,10 @@ scroll_done:
     pop bp
     ret 10
 
-
+; find_and_highlight parameters:
+; [bp+4] = keyword address
+; [bp+6] = keyword length
+; [bp+8] = highlight attribute
 ; searches rows 5-20 and columns 10-70 and returns match count in AX.
 find_and_highlight:
 
@@ -557,4 +581,88 @@ search_done:
     mov sp, bp
     pop bp
     ret 6
+	
+; print number parameters:
+; [bp+4]  = number
+; [bp+6]  = row
+; [bp+8]  = column
+; [bp+10] = attribute
 
+; prints decimal digits using the stack and returns digit count in AX.
+print_number:
+
+    push bp
+    mov bp, sp
+    sub sp, 2
+
+    ; [bp-2] = digit count
+
+    push bx
+    push cx
+    push dx
+    push di
+    push es
+
+    mov word [bp-2], 0
+
+    ; Calculate screen offset.
+
+    mov ax, [bp+6]
+    mov bx, 160
+    mul bx
+
+    mov bx, [bp+8]
+    shl bx, 1
+    add ax, bx
+    mov di, ax
+
+    mov ax, [bp+4]
+    mov bx, 10
+
+    cmp ax, 0
+    jne number_divide_loop
+
+    push word 0
+    inc word [bp-2]
+    jmp number_print_digits
+
+number_divide_loop:
+
+    xor dx, dx
+    div bx
+
+    push dx
+    inc word [bp-2]
+
+    cmp ax, 0
+    jne number_divide_loop
+
+number_print_digits:
+
+    mov ax, 0B800h
+    mov es, ax
+
+    mov cx, [bp-2]
+
+number_output_loop:
+
+    pop dx
+
+    mov al, dl
+    add al, '0'
+    mov ah, [bp+10]
+
+    stosw
+    loop number_output_loop
+
+    mov ax, [bp-2]
+
+    pop es
+    pop di
+    pop dx
+    pop cx
+    pop bx
+
+    mov sp, bp
+    pop bp
+    ret 8
